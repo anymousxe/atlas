@@ -19,6 +19,8 @@ const CREATOR_TEST_EMAIL = 'anymousxe.info@gmail.com';
 const GITHUB_OAUTH_CLIENT_ID_FALLBACK = 'Ov23li3i0tVUl0vhlgAn';
 const GITHUB_OAUTH_PROTOCOL = 'atlas-app';
 const GITHUB_OAUTH_REDIRECT_URI = 'http://127.0.0.1:3000/callback';
+const PATREON_REDIRECT_URI = 'http://127.0.0.1:3001/patreon-callback';
+const PATREON_WORKER_URL = 'https://atlas-api-proxy.anymousxe-info.workers.dev';
 const GITHUB_TOKEN_STORAGE_FILE = () => path.join(app.getPath('userData'), 'github-token.json');
 let updatePollTimer = null;
 let updateStartupTimer = null;
@@ -28,6 +30,9 @@ let githubOAuthError = '';
 let githubAuthPending = false;
 let githubCallbackServer = null;
 let githubOAuthState = '';
+let patreonCallbackServer = null;
+let patreonAuthPending = false;
+let patreonAuthResult = null;
 let lastErrorNotifyTime = 0;
 const ERROR_NOTIFY_DEBOUNCE_MS = 500;
 let updateConfig = {
@@ -460,6 +465,110 @@ ipcMain.handle('kofi:verify', async (_e, email) => {
     return { verified: false, reason: 'Network error during verification.' };
   }
 });
+
+// ─── Patreon Verification (OAuth via CF Worker) ─────────────────
+function stopPatreonCallbackServer() {
+  if (patreonCallbackServer) {
+    try { patreonCallbackServer.close(); } catch {}
+    patreonCallbackServer = null;
+  }
+}
+
+function broadcastPatreonStatus(data) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('patreon:status', data);
+  }
+}
+
+ipcMain.handle('patreon:startAuth', async () => {
+  try {
+    // Fetch client ID from worker (keeps it server-side)
+    const configRes = await fetch(`${PATREON_WORKER_URL}/patreon/config`);
+    const configData = await configRes.json().catch(() => ({}));
+    const clientId = configData?.client_id;
+    if (!clientId) throw new Error('Patreon not configured on server');
+
+    stopPatreonCallbackServer();
+    patreonAuthPending = true;
+    patreonAuthResult = null;
+    broadcastPatreonStatus({ pending: true });
+
+    // Start local callback server on port 3001
+    patreonCallbackServer = http.createServer(async (req, res) => {
+      try {
+        const full = new URL(req.url || '/', PATREON_REDIRECT_URI);
+        if (full.pathname !== '/patreon-callback') {
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.end('Not found');
+          return;
+        }
+
+        const code = full.searchParams.get('code');
+        const error = full.searchParams.get('error');
+
+        if (error) {
+          patreonAuthResult = { verified: false, reason: error };
+          patreonAuthPending = false;
+          broadcastPatreonStatus({ pending: false, result: patreonAuthResult });
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end('<!doctype html><html><body><h3>Patreon auth failed.</h3><p>You can close this tab.</p></body></html>');
+          setTimeout(() => stopPatreonCallbackServer(), 250);
+          return;
+        }
+
+        if (!code) {
+          res.writeHead(400, { 'Content-Type': 'text/plain' });
+          res.end('Missing code');
+          return;
+        }
+
+        // Show waiting page
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end('<!doctype html><html><body><h3>Verifying your Patreon membership...</h3><p>You can close this tab.</p></body></html>');
+
+        // Send code to CF Worker for verification
+        try {
+          const verifyRes = await fetch(`${PATREON_WORKER_URL}/patreon/verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code, redirect_uri: PATREON_REDIRECT_URI }),
+          });
+          patreonAuthResult = await verifyRes.json().catch(() => ({ verified: false, reason: 'Invalid response' }));
+        } catch (fetchErr) {
+          patreonAuthResult = { verified: false, reason: 'Network error: ' + fetchErr.message };
+        }
+
+        patreonAuthPending = false;
+        broadcastPatreonStatus({ pending: false, result: patreonAuthResult });
+        setTimeout(() => stopPatreonCallbackServer(), 250);
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('Error');
+      }
+    });
+
+    await new Promise((resolve, reject) => {
+      patreonCallbackServer.once('error', reject);
+      patreonCallbackServer.listen(3001, '127.0.0.1', () => resolve(true));
+    });
+
+    // Build OAuth URL and open in browser
+    const scopes = 'identity identity[email]';
+    const authUrl = `https://www.patreon.com/oauth2/authorize?response_type=code&client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(PATREON_REDIRECT_URI)}&scope=${encodeURIComponent(scopes)}`;
+    await shell.openExternal(authUrl);
+    return { ok: true };
+  } catch (err) {
+    patreonAuthPending = false;
+    patreonAuthResult = { verified: false, reason: err.message };
+    broadcastPatreonStatus({ pending: false, result: patreonAuthResult });
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('patreon:getStatus', () => ({
+  pending: patreonAuthPending,
+  result: patreonAuthResult,
+}));
 
 // ─── Git Operations (secure — secrets NEVER leave main process) ─
 ipcMain.handle('git:status', async (_e, cwd) => {

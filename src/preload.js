@@ -47,6 +47,15 @@ contextBridge.exposeInMainWorld('atlas', {
   // Ko-fi verification (secure — token stays in main process)
   verifyKofi: (email) => ipcRenderer.invoke('kofi:verify', email),
 
+  // Patreon verification (OAuth via CF Worker — secrets stay server-side)
+  patreonStartAuth: () => ipcRenderer.invoke('patreon:startAuth'),
+  patreonGetStatus: () => ipcRenderer.invoke('patreon:getStatus'),
+  onPatreonStatus: (cb) => {
+    const h = (_e, payload) => cb(payload);
+    ipcRenderer.on('patreon:status', h);
+    return () => ipcRenderer.removeListener('patreon:status', h);
+  },
+
   // Git operations (secure — secrets never reach renderer)
   gitStatus: (cwd) => ipcRenderer.invoke('git:status', cwd),
   gitLog: (cwd, n) => ipcRenderer.invoke('git:log', cwd, n),

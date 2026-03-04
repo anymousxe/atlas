@@ -33,6 +33,10 @@ export default {
           zip: env.ATLAS_ZIP_URL || null,
         });
       }
+      if (path === '/patreon/config') {
+        // Return only the client ID (public) so the app can build the OAuth URL
+        return jsonResponse({ client_id: env.PATREON_CLIENT_ID || '' });
+      }
       if (path === '/health' || path === '/') {
         return jsonResponse({ status: 'ok', service: 'atlas-api-proxy' });
       }
@@ -42,6 +46,11 @@ export default {
     // ── API Proxy (POST) ───────────────────────────────────────
     if (request.method !== 'POST') {
       return errorResponse('Method not allowed. Use POST.', 405);
+    }
+
+    // ── Patreon Verify (POST) ──────────────────────────────────
+    if (url.pathname === '/patreon/verify') {
+      return handlePatreonVerify(request, env);
     }
 
     try {
@@ -218,6 +227,110 @@ function handleLatestYml(env) {
       ...getCORSHeaders(),
     },
   });
+}
+
+/**
+ * Handle Patreon OAuth verification
+ * 1. Exchange auth code for user access token
+ * 2. Get user identity (Patreon user ID)
+ * 3. Use Creator token to check campaign membership + tier
+ */
+async function handlePatreonVerify(request, env) {
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { code, redirect_uri } = body;
+    if (!code || !redirect_uri) {
+      return errorResponse('Missing code or redirect_uri', 400);
+    }
+
+    const clientId = (env.PATREON_CLIENT_ID || '').trim();
+    const clientSecret = (env.PATREON_CLIENT_SECRET || '').trim();
+    const creatorToken = (env.PATREON_CREATOR_TOKEN || '').trim();
+    if (!clientId || !clientSecret || !creatorToken) {
+      return errorResponse('Patreon not configured on server', 500);
+    }
+
+    // Step 1: Exchange code for user access token
+    const tokenRes = await fetch('https://www.patreon.com/api/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        grant_type: 'authorization_code',
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri,
+      }).toString(),
+    });
+    const tokenData = await tokenRes.json().catch(() => ({}));
+    if (!tokenRes.ok || !tokenData.access_token) {
+      return jsonResponse({ verified: false, reason: tokenData.error || 'Token exchange failed' }, 200);
+    }
+
+    // Step 2: Get user identity
+    const identityRes = await fetch('https://www.patreon.com/api/oauth2/v2/identity?fields%5Buser%5D=email,full_name', {
+      headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
+    });
+    const identityData = await identityRes.json().catch(() => ({}));
+    const patreonUserId = identityData?.data?.id;
+    const userEmail = identityData?.data?.attributes?.email || '';
+    const userName = identityData?.data?.attributes?.full_name || '';
+    if (!patreonUserId) {
+      return jsonResponse({ verified: false, reason: 'Could not get Patreon identity' }, 200);
+    }
+
+    // Step 3: Get campaign ID
+    const campaignRes = await fetch('https://www.patreon.com/api/oauth2/v2/campaigns', {
+      headers: { 'Authorization': `Bearer ${creatorToken}` },
+    });
+    const campaignData = await campaignRes.json().catch(() => ({}));
+    const campaignId = campaignData?.data?.[0]?.id;
+    if (!campaignId) {
+      return jsonResponse({ verified: false, reason: 'Campaign not found' }, 200);
+    }
+
+    // Step 4: Search for this user in campaign members
+    let tier = null;
+    let cursor = null;
+    const memberFields = 'fields%5Bmember%5D=patron_status,currently_entitled_amount_cents,email';
+    for (let page = 0; page < 20; page++) {
+      let membersUrl = `https://www.patreon.com/api/oauth2/v2/campaigns/${campaignId}/members?${memberFields}&page%5Bcount%5D=100`;
+      if (cursor) membersUrl += `&page%5Bcursor%5D=${encodeURIComponent(cursor)}`;
+
+      const membersRes = await fetch(membersUrl, {
+        headers: { 'Authorization': `Bearer ${creatorToken}` },
+      });
+      const membersData = await membersRes.json().catch(() => ({}));
+      const members = membersData?.data || [];
+
+      for (const m of members) {
+        const mUserId = m?.relationships?.user?.data?.id;
+        const mEmail = (m?.attributes?.email || '').toLowerCase();
+        if (mUserId === patreonUserId || (userEmail && mEmail === userEmail.toLowerCase())) {
+          const status = m?.attributes?.patron_status;
+          const cents = m?.attributes?.currently_entitled_amount_cents || 0;
+          if (status === 'active_patron' && cents > 0) {
+            if (cents >= 2000) tier = 'dev';
+            else if (cents >= 1000) tier = 'pro';
+            else tier = 'pro'; // any active patron gets at least pro
+          }
+          break;
+        }
+      }
+
+      if (tier !== null) break;
+      cursor = membersData?.meta?.pagination?.cursors?.next;
+      if (!cursor) break;
+    }
+
+    if (tier) {
+      return jsonResponse({ verified: true, tier, email: userEmail, name: userName });
+    }
+    return jsonResponse({ verified: false, reason: 'No active Patreon membership found. Make sure you have an active pledge.', email: userEmail });
+  } catch (err) {
+    console.error('Patreon verify error:', err);
+    return errorResponse('Patreon verification failed: ' + err.message, 500);
+  }
 }
 
 /**

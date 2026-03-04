@@ -3341,10 +3341,58 @@ function displayRepos(repos) {
     }
   });
 
-  // Patreon upgrade
-  $('btn-patreon-upgrade')?.addEventListener('click', () => {
-    window.atlas.openExternal('https://www.patreon.com/15655004/join');
+  // Patreon upgrade / link account
+  $('btn-patreon-upgrade')?.addEventListener('click', async () => {
+    const btn = $('btn-patreon-upgrade');
+    const currentPlan = getCurrentPlan();
+    if (currentPlan === 'pro' || currentPlan === 'dev' || currentPlan === 'creator') {
+      // Already linked — offer to recheck
+      btn.textContent = '⏳ Checking...';
+      btn.disabled = true;
+    } else {
+      btn.textContent = '⏳ Opening Patreon...';
+      btn.disabled = true;
+    }
+    try {
+      const res = await window.atlas.patreonStartAuth();
+      if (!res.ok) {
+        notify('Patreon auth failed: ' + (res.error || 'Unknown error'), 'error');
+        btn.textContent = '✦ Upgrade on Patreon';
+        btn.disabled = false;
+      }
+      // Result will come via the patreon:status listener
+    } catch (e) {
+      notify('Patreon error: ' + e.message, 'error');
+      btn.textContent = '✦ Upgrade on Patreon';
+      btn.disabled = false;
+    }
   });
+
+  // Listen for Patreon auth results
+  if (window.atlas.onPatreonStatus) {
+    window.atlas.onPatreonStatus((data) => {
+      const btn = $('btn-patreon-upgrade');
+      if (data.pending) {
+        if (btn) { btn.textContent = '⏳ Verifying...'; btn.disabled = true; }
+        return;
+      }
+      if (btn) { btn.disabled = false; }
+      const result = data.result;
+      if (result?.verified && result?.tier) {
+        localStorage.setItem(PLAN_STORE_KEY, result.tier);
+        if (result.email) localStorage.setItem(VERIFIED_EMAIL_STORE_KEY, result.email);
+        const planDisplay = $('current-plan-display');
+        if (planDisplay) planDisplay.textContent = result.tier.charAt(0).toUpperCase() + result.tier.slice(1);
+        updatePlanDescription();
+        updateUsageDisplay();
+        if (btn) btn.textContent = `✓ ${result.tier.toUpperCase()} Plan Active`;
+        notify(`Patreon verified! You're on the ${result.tier.toUpperCase()} plan.`, 'success');
+      } else {
+        if (btn) btn.textContent = '✦ Upgrade on Patreon';
+        notify(result?.reason || 'No active Patreon membership found.', 'error');
+      }
+    });
+  }
 
   // Preview
   $('btn-preview-close')?.addEventListener('click', togglePreview);
