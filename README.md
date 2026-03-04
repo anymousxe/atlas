@@ -17,6 +17,10 @@ Atlas is an Electron-based AI coding workspace with an integrated editor, termin
 - `scripts/` — utility scripts (server, icon generation, mocks)
 - `assets/` — icons and static resources
 
+## Download
+
+**[Download Atlas Installer](https://github.com/anymousxe/atlas/releases/latest)** — Get the latest `.exe` and `.zip` builds from releases.
+
 ## Quick Start
 
 ### Prerequisites
