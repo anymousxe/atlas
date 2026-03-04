@@ -1,4 +1,4 @@
-/**
+﻿/**
  * renderer.js — opcode IDE renderer process
  * Features: Monaco editor, xterm, AI chat with agent/fast/plan modes,
  * message queue, copy buttons, fix buttons, collapsible tool output,
@@ -1806,11 +1806,23 @@ function redactEnvContent(content) {
 function shouldForceToolRetry(text) {
   if (!text || typeof text !== 'string') return false;
   const t = text.toLowerCase();
+  const actions = 'create|write|run|verify|check|read|list|open|edit|fix|execute|test|install|build|delete|remove|move|rename|copy|mkdir';
   const intentPatterns = [
-    /let me\s+(create|write|run|verify|check|read|list|open|edit|fix|execute|test|install|build)/,
-    /i\s+(will|can|am going to|gonna)\s+(create|write|run|verify|check|read|list|open|edit|fix|execute|test|install|build)/,
-    /i['’]ll\s+(create|write|run|verify|check|read|list|open|edit|fix|execute|test|install|build)/,
-    /creating\s+file|writing\s+file|running\s+command|verifying|checking\s+now|file written|i can actually create files/
+    new RegExp('let me\\\\s+(' + actions + ')'),
+    new RegExp('i\\\\s+(will|can|am going to|gonna)\\\\s+(' + actions + ')'),
+    new RegExp("i['\u2019]ll\\\\s+(" + actions + ')'),
+    /creating\s+file|writing\s+file|running\s+command|verifying|checking\s+now|file written|i can actually create files/,
+    /delet(e|ing)\s+(the\s+)?(file|folder|director|all)/,
+    /remov(e|ing)\s+(the\s+)?(file|folder|director|all)/,
+    /here.*(?:commands?|steps?).*(?:delete|remove)/,
+    /to\s+delete|to\s+remove|will\s+(?:now\s+)?(?:delete|remove)/
+  ];
+  return intentPatterns.some((re) => re.test(t));
+}
+
+ng)\s+(the\s+)?(file|folder|director|all)/,
+    /here.*(?:commands?|steps?).*(?:delete|remove)/,
+    /to\s+delete|to\s+remove|will\s+(?:now\s+)?(?:delete|remove)/
   ];
   return intentPatterns.some((re) => re.test(t));
 }
@@ -1897,21 +1909,23 @@ async function agentLoopClaude(userText, model, mode) {
     // If model narrates intent but doesn't call tools, force a retry prompt.
     if (!toolCalls.length) {
       // Always check for text-based tool retry — even if patterns don't explicitly match
-      // If the model produced a long reply (>200 chars) in agent mode, it probably should have used tools
+      // If the model produced a long reply (>100 chars) in agent mode, it probably should have used tools
       const hasToolIntent = shouldForceToolRetry(result.text);
-      const longNarration = mode === 'agent' && (result.text || '').length > 200;
-      const shouldRetry = noToolRetries < 4 && (hasToolIntent || (longNarration && noToolRetries < 2));
+      const longNarration = mode === 'agent' && (result.text || '').length > 100;
+      const shouldRetry = noToolRetries < 6 && (hasToolIntent || (longNarration && noToolRetries < 3));
       if (shouldRetry) {
         noToolRetries++;
-        const retryEl = addStatusMessage('🔁', `Retry ${noToolRetries}/4: forcing tool execution...`);
-        replaceStatusMessage(retryEl, '🔁', `Retry ${noToolRetries}/4: forcing tool calls`);
+        const retryEl = addStatusMessage('🔁', `Retry ${noToolRetries}/6: forcing tool execution...`);
+        replaceStatusMessage(retryEl, '🔁', `Retry ${noToolRetries}/6: forcing tool calls`);
         chatHistoryClaude.push({
           role: 'user',
           content: `VIOLATION: You output text instead of calling tools. This is attempt ${noToolRetries}.
-You MUST call tools in your next response. Do NOT describe what you will do.
-Call write_file, make_directory, execute_terminal_command, list_directory, read_file, or run_file NOW.
-If you were planning to create files, call write_file with the COMPLETE content immediately.
-NO TEXT OUTPUT. ONLY TOOL CALLS. START NOW.`
+You MUST call tools in your VERY NEXT response. Do NOT describe what you will do — JUST DO IT.
+If user asked to delete files: call delete_file for each file path.
+If user asked to create files: call write_file with the COMPLETE content.
+If user asked to run something: call execute_terminal_command or run_file.
+Available tools: write_file, read_file, delete_file, execute_terminal_command, list_directory, make_directory, move_file, copy_file, run_file.
+NO TEXT OUTPUT. ONLY TOOL CALLS. DO IT NOW.`
         });
         continue;
       }
@@ -2044,15 +2058,21 @@ async function agentLoopLR(userText, model, mode) {
     // If model narrates intent but doesn't call tools, force a retry prompt.
     if (!toolCalls.length) {
       const hasToolIntent = shouldForceToolRetry(result.text);
-      const longNarration = mode === 'agent' && (result.text || '').length > 200;
-      const shouldRetry = noToolRetries < 4 && (hasToolIntent || (longNarration && noToolRetries < 2));
+      const longNarration = mode === 'agent' && (result.text || '').length > 100;
+      const shouldRetry = noToolRetries < 6 && (hasToolIntent || (longNarration && noToolRetries < 3));
       if (shouldRetry) {
         noToolRetries++;
-        const retryEl = addStatusMessage('🔁', `Retry ${noToolRetries}/4: forcing tool execution...`);
-        replaceStatusMessage(retryEl, '🔁', `Retry ${noToolRetries}/4: forcing tool calls`);
+        const retryEl = addStatusMessage('🔁', `Retry ${noToolRetries}/6: forcing tool execution...`);
+        replaceStatusMessage(retryEl, '🔁', `Retry ${noToolRetries}/6: forcing tool calls`);
         chatHistoryLR.push({
           role: 'user',
-          content: `VIOLATION: You output text instead of calling tools. This is attempt ${noToolRetries}.\nYou MUST call tools in your next response. Do NOT describe what you will do.\nCall write_file, make_directory, execute_terminal_command, list_directory, read_file, or run_file NOW.\nNO TEXT OUTPUT. ONLY TOOL CALLS. START NOW.`
+          content: `VIOLATION: You output text instead of calling tools. This is attempt ${noToolRetries}.
+You MUST call tools in your VERY NEXT response. Do NOT describe what you will do — JUST DO IT.
+If user asked to delete files: call delete_file for each file path.
+If user asked to create files: call write_file with the COMPLETE content.
+If user asked to run something: call execute_terminal_command or run_file.
+Available tools: write_file, read_file, delete_file, execute_terminal_command, list_directory, make_directory, move_file, copy_file, run_file.
+NO TEXT OUTPUT. ONLY TOOL CALLS. DO IT NOW.`
         });
         continue;
       }
@@ -2407,13 +2427,30 @@ function extractToolCallsFromText(text) {
   const calls = [];
   if (!text || typeof text !== 'string') return calls;
 
+  // 0) Detect JSON tool call blocks (Gemini sometimes dumps tool calls as JSON in text)
+  const jsonToolRe = /\{\s*"name"\s*:\s*"(\w+)"\s*,\s*"(?:arguments|parameters|input)"\s*:\s*(\{[\s\S]*?\})\s*\}/gi;
+  let m;
+  while ((m = jsonToolRe.exec(text)) !== null) {
+    try {
+      const parsed = JSON.parse(m[2]);
+      calls.push({ name: m[1], input: parsed });
+    } catch {}
+  }
+
+  // 0b) Detect function_call format: {"function_call": {"name": ..., "arguments": ...}}
+  const fcRe = /\{\s*"function_call"\s*:\s*\{\s*"name"\s*:\s*"(\w+)"\s*,\s*"arguments"\s*:\s*"?([\s\S]*?)"?\s*\}\s*\}/gi;
+  while ((m = fcRe.exec(text)) !== null) {
+    try {
+      const args = m[2].startsWith('{') ? JSON.parse(m[2]) : {};
+      calls.push({ name: m[1], input: typeof args === 'object' ? args : {} });
+    } catch {}
+  }
+
   // 1) Detect terminal command blocks
   const cmdBlockRe = /```(?:bash|sh|powershell|shell|cmd|terminal|console|ps1|ps)\s*\n([\s\S]*?)```/gi;
-  let m;
   while ((m = cmdBlockRe.exec(text)) !== null) {
     const code = m[1].trim();
     if (code) {
-      // Split by newlines — each non-empty line is a command (skip comments)
       const lines = code.split(/\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#') && !l.startsWith('//'));
       for (const line of lines) {
         calls.push({ name: 'execute_terminal_command', input: { command: line } });
@@ -2421,9 +2458,16 @@ function extractToolCallsFromText(text) {
     }
   }
 
+  // 1b) Detect inline delete/remove commands from text
+  const deleteCommandRe = /(?:^|\n)\s*(?:Remove-Item|del |rm |rmdir)\s+["']?([^\n"']+)["']?/gi;
+  while ((m = deleteCommandRe.exec(text)) !== null) {
+    const target = m[1].trim().replace(/\s*-\w+.*$/, '');
+    if (target && !calls.some(c => c.name === 'delete_file' && c.input.path === target)) {
+      calls.push({ name: 'delete_file', input: { path: target } });
+    }
+  }
+
   // 2) Detect file write patterns
-  // Usually AI writes something like: **src/main.js**\n```js\n...\n```
-  // Let's use a regex that captures the filename directly before the code block
   const fileBlockRegex = /(?:`([^`]+)`|\*\*([^*]+)\*\*)\s*```[a-z]*\s*\n([\s\S]*?)```/gi;
   while ((m = fileBlockRegex.exec(text)) !== null) {
     const fpath = (m[1] || m[2]).trim();
@@ -2433,8 +2477,8 @@ function extractToolCallsFromText(text) {
     }
   }
 
-  // Fallback 3: The original filename regex inside the tick marks
-  const fileBlockRe = /```([a-zA-Z0-9_\-.\/\\]+\.[a-zA-Z0-9]+)\s*\n([\s\S]*?)```/gi;
+  // Fallback 3: filename inside tick marks
+  const fileBlockRe = /```([a-zA-Z0-9_\-.\//\\]+\.[a-zA-Z0-9]+)\s*\n([\s\S]*?)```/gi;
   while ((m = fileBlockRe.exec(text)) !== null) {
     const fpath = m[1].trim();
     const content = m[2];
@@ -2450,7 +2494,6 @@ function extractToolCallsFromText(text) {
 
   return calls;
 }
-
 /* ================================================================
    PERMISSION HANDLING — bridges atl framework to UI modals
    ================================================================ */
