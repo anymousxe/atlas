@@ -1932,14 +1932,22 @@ NO TEXT OUTPUT. ONLY TOOL CALLS. START NOW.`
       // Show status in chat
       const statusEl = addStatusMessage('⚡', toolLabel);
 
-      const output = await withTimeout(
-        executeTool(tc.name, tc.input),
-        300000,
-        `Tool timed out: ${tc.name}`,
-        () => abortCtrl?.abort()
-      );
-      const outputStr = typeof output === 'string' ? output : JSON.stringify(output);
-      const isError = typeof output === 'object' && output?.error;
+      let output;
+      let outputStr;
+      let isError = false;
+      try {
+        output = await withTimeout(
+          executeTool(tc.name, tc.input),
+          300000,
+          `Tool timed out: ${tc.name}`,
+          () => {} // Don't abort the whole agent on tool timeout
+        );
+        outputStr = typeof output === 'string' ? output : JSON.stringify(output);
+        isError = typeof output === 'object' && output?.error;
+      } catch (toolErr) {
+        outputStr = `Error: ${toolErr.message || 'Tool execution failed'}`;
+        isError = true;
+      }
 
       // Replace spinner with done indicator
       replaceStatusMessage(statusEl, isError ? '❌' : '✅', toolLabel);
@@ -2066,14 +2074,22 @@ async function agentLoopLR(userText, model, mode) {
       // Show status in chat
       const statusEl = addStatusMessage('⚡', toolLabel);
 
-      const output = await withTimeout(
-        executeTool(tc.name, input),
-        300000,
-        `Tool timed out: ${tc.name}`,
-        () => abortCtrl?.abort()
-      );
-      const outputStr = typeof output === 'string' ? output : JSON.stringify(output);
-      const isError = typeof output === 'object' && output?.error;
+      let output;
+      let outputStr;
+      let isError = false;
+      try {
+        output = await withTimeout(
+          executeTool(tc.name, input),
+          300000,
+          `Tool timed out: ${tc.name}`,
+          () => {} // Don't abort the whole agent on tool timeout
+        );
+        outputStr = typeof output === 'string' ? output : JSON.stringify(output);
+        isError = typeof output === 'object' && output?.error;
+      } catch (toolErr) {
+        outputStr = `Error: ${toolErr.message || 'Tool execution failed'}`;
+        isError = true;
+      }
 
       // Replace spinner with done indicator
       replaceStatusMessage(statusEl, isError ? '❌' : '✅', toolLabel);
