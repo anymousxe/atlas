@@ -1,0 +1,24 @@
+{
+  "name": "atlas-api-proxy",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker for securely proxying API calls from Atlas IDE",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "dotenv wrangler dev --env development",
+    "deploy": "wrangler deploy --env production",
+    "deploy:dev": "wrangler deploy --env development"
+  },
+  "keywords": [
+    "cloudflare-worker",
+    "api-proxy",
+    "security"
+  ],
+  "author": "Atlas",
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250108.0",
+    "dotenv-cli": "^11.0.0",
+    "wrangler": "^3.69.7"
+  }
+}
