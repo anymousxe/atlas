@@ -1824,16 +1824,21 @@ function redactEnvContent(content) {
 function shouldForceToolRetry(text) {
   if (!text || typeof text !== 'string') return false;
   const t = text.toLowerCase();
-  const actions = 'create|write|run|verify|check|read|list|open|edit|fix|execute|test|install|build|delete|remove|move|rename|copy|mkdir';
+
+  // If model outputs code fences, it should have used tools instead
+  if (/```[\s\S]*?```/.test(text)) return true;
+
+  const actions = 'create|write|run|verify|check|read|list|open|edit|fix|execute|test|install|build|delete|remove|move|rename|copy|mkdir|make';
   const intentPatterns = [
-    new RegExp('let me\\\\s+(' + actions + ')'),
-    new RegExp('i\\\\s+(will|can|am going to|gonna)\\\\s+(' + actions + ')'),
-    new RegExp("i['\u2019]ll\\\\s+(" + actions + ')'),
-    /creating\s+file|writing\s+file|running\s+command|verifying|checking\s+now|file written|i can actually create files/,
-    /delet(e|ing)\s+(the\s+)?(file|folder|director|all)/,
-    /remov(e|ing)\s+(the\s+)?(file|folder|director|all)/,
-    /here.*(?:commands?|steps?).*(?:delete|remove)/,
-    /to\s+delete|to\s+remove|will\s+(?:now\s+)?(?:delete|remove)/
+    new RegExp('(?:let me|i will|i can|i am going to|i gonna|i\'ll)\\s+(?:' + actions + ')', 'i'),
+    new RegExp('(?:sure|certainly|of course|absolutely)[!.,]*\\s+(?:i\'ll|i will|let me|i can)', 'i'),
+    /(?:creating|writing|running|deleting|removing|building|installing|making)\s+(?:a\s+)?(?:file|folder|director|the|this|your)/i,
+    /(?:here(?:'s| is| are))\s+(?:the|a|your|my)?\s*(?:file|code|content|script|command|implementation)/i,
+    /(?:delete|delet(?:e|ing)|remov(?:e|ing))\s+(?:the\s+)?(?:file|folder|director|all)/i,
+    /(?:here|following).*(?:commands?|steps?).*(?:delete|remove|create|write)/i,
+    /(?:to\s+delete|to\s+remove|to\s+create|to\s+write|will\s+(?:now\s+)?(?:delete|remove|create|write))/i,
+    /i can (?:actually )?(?:create|help|make|write|delete|build)/i,
+    /(?:would you like me to|shall i|do you want me to)\s+(?:create|write|delete|run|make)/i
   ];
   return intentPatterns.some((re) => re.test(t));
 }
@@ -1864,6 +1869,7 @@ async function agentLoopClaude(userText, model, mode) {
 
     let result;
     try {
+      const claudeOptions = noToolRetries > 0 ? { toolChoice: { type: 'any' } } : {};
       result = await processClaude(claudeKey, model, chatHistoryClaude, abortCtrl.signal,
         (chunk) => {
           if (thinkEl) { thinkEl.remove(); thinkEl = null; }
@@ -1876,7 +1882,8 @@ async function agentLoopClaude(userText, model, mode) {
           thinkingPreview = (thinkingPreview + (thinkingChunk || '')).trim();
           const preview = thinkingPreview.replace(/\s+/g, ' ').slice(-140);
           updateStatusMessage(activityEl, preview ? `Thinking: ${preview}` : 'Thinking...');
-        }
+        },
+        claudeOptions
       );
     } catch (err) {
       if (thinkEl) thinkEl.remove();
@@ -1923,20 +1930,29 @@ async function agentLoopClaude(userText, model, mode) {
       // If the model produced a long reply (>100 chars) in agent mode, it probably should have used tools
       const hasToolIntent = shouldForceToolRetry(result.text);
       const longNarration = mode === 'agent' && (result.text || '').length > 100;
-      const shouldRetry = noToolRetries < 6 && (hasToolIntent || (longNarration && noToolRetries < 3));
+      const shouldRetry = noToolRetries < 6 && (hasToolIntent || (longNarration && noToolRetries < 4));
       if (shouldRetry) {
         noToolRetries++;
         const retryEl = addStatusMessage('🔁', `Retry ${noToolRetries}/6: forcing tool execution...`);
         replaceStatusMessage(retryEl, '🔁', `Retry ${noToolRetries}/6: forcing tool calls`);
         chatHistoryClaude.push({
           role: 'user',
-          content: `VIOLATION: You output text instead of calling tools. This is attempt ${noToolRetries}.
-You MUST call tools in your VERY NEXT response. Do NOT describe what you will do — JUST DO IT.
-If user asked to delete files: call delete_file for each file path.
-If user asked to create files: call write_file with the COMPLETE content.
-If user asked to run something: call execute_terminal_command or run_file.
-Available tools: write_file, read_file, delete_file, execute_terminal_command, list_directory, make_directory, move_file, copy_file, run_file.
-NO TEXT OUTPUT. ONLY TOOL CALLS. DO IT NOW.`
+          content: `SYSTEM: Your previous response contained only text. You MUST use tool calls. Attempt ${noToolRetries}/6.
+
+Do NOT output any text. ONLY call tools. The system will force tool_choice on this response.
+
+Reminder of what was asked: Look at the conversation above and perform the requested action using these tools:
+- write_file(path, content) — Create/overwrite files
+- read_file(path) — Read files  
+- delete_file(path) — Delete files
+- execute_terminal_command(command) — Run commands
+- run_file(path) — Run scripts
+- list_directory(path) — List files
+- make_directory(path) — Create folders
+- move_file(old_path, new_path) — Move/rename
+- copy_file(source, destination) — Copy files
+
+CALL A TOOL NOW. Do not write text.`
         });
         continue;
       }
@@ -2018,6 +2034,7 @@ async function agentLoopLR(userText, model, mode) {
 
     let result;
     try {
+      const lrOptions = noToolRetries > 0 ? { toolChoice: 'required' } : {};
       result = await processLR(lrKeyMgr, resolvedModel, chatHistoryLR, abortCtrl.signal,
         (chunk) => {
           if (thinkEl) { thinkEl.remove(); thinkEl = null; }
@@ -2025,7 +2042,8 @@ async function agentLoopLR(userText, model, mode) {
           fullText += chunk;
           bubble.innerHTML = renderMarkdown(fullText);
           $('chat-log').scrollTop = $('chat-log').scrollHeight;
-        }
+        },
+        lrOptions
       );
     } catch (err) {
       if (thinkEl) thinkEl.remove();
@@ -2070,20 +2088,29 @@ async function agentLoopLR(userText, model, mode) {
     if (!toolCalls.length) {
       const hasToolIntent = shouldForceToolRetry(result.text);
       const longNarration = mode === 'agent' && (result.text || '').length > 100;
-      const shouldRetry = noToolRetries < 6 && (hasToolIntent || (longNarration && noToolRetries < 3));
+      const shouldRetry = noToolRetries < 6 && (hasToolIntent || (longNarration && noToolRetries < 4));
       if (shouldRetry) {
         noToolRetries++;
         const retryEl = addStatusMessage('🔁', `Retry ${noToolRetries}/6: forcing tool execution...`);
         replaceStatusMessage(retryEl, '🔁', `Retry ${noToolRetries}/6: forcing tool calls`);
         chatHistoryLR.push({
           role: 'user',
-          content: `VIOLATION: You output text instead of calling tools. This is attempt ${noToolRetries}.
-You MUST call tools in your VERY NEXT response. Do NOT describe what you will do — JUST DO IT.
-If user asked to delete files: call delete_file for each file path.
-If user asked to create files: call write_file with the COMPLETE content.
-If user asked to run something: call execute_terminal_command or run_file.
-Available tools: write_file, read_file, delete_file, execute_terminal_command, list_directory, make_directory, move_file, copy_file, run_file.
-NO TEXT OUTPUT. ONLY TOOL CALLS. DO IT NOW.`
+          content: `SYSTEM: Your previous response contained only text. You MUST use function calls. Attempt ${noToolRetries}/6.
+
+Do NOT output any text. ONLY make function calls. The system will force tool_choice on this response.
+
+Reminder of what was asked: Look at the conversation above and perform the requested action using these functions:
+- write_file(path, content) — Create/overwrite files
+- read_file(path) — Read files
+- delete_file(path) — Delete files
+- execute_terminal_command(command) — Run commands
+- run_file(path) — Run scripts
+- list_directory(path) — List files
+- make_directory(path) — Create folders
+- move_file(old_path, new_path) — Move/rename
+- copy_file(source, destination) — Copy files
+
+CALL A FUNCTION NOW. Do not write text.`
         });
         continue;
       }
@@ -2457,6 +2484,23 @@ function extractToolCallsFromText(text) {
     } catch {}
   }
 
+  // 0c) Detect tool calls described as write_file(path="...", content="...")
+  const funcCallRe = /\b(write_file|read_file|delete_file|execute_terminal_command|run_file|list_directory|make_directory|move_file|copy_file)\s*\(\s*(?:path\s*=\s*)?["']([^"']+)["'](?:\s*,\s*(?:content\s*=\s*)?["']([\s\S]*?)["'])?\s*\)/gi;
+  while ((m = funcCallRe.exec(text)) !== null) {
+    const name = m[1];
+    const firstArg = m[2];
+    const secondArg = m[3];
+    const input = {};
+    if (name === 'write_file') { input.path = firstArg; input.content = secondArg || ''; }
+    else if (name === 'execute_terminal_command') { input.command = firstArg; }
+    else if (name === 'copy_file') { input.source = firstArg; input.destination = secondArg || ''; }
+    else if (name === 'move_file') { input.old_path = firstArg; input.new_path = secondArg || ''; }
+    else { input.path = firstArg; }
+    if (!calls.some(c => c.name === name && JSON.stringify(c.input) === JSON.stringify(input))) {
+      calls.push({ name, input });
+    }
+  }
+
   // 1) Detect terminal command blocks
   const cmdBlockRe = /```(?:bash|sh|powershell|shell|cmd|terminal|console|ps1|ps)\s*\n([\s\S]*?)```/gi;
   while ((m = cmdBlockRe.exec(text)) !== null) {
@@ -2478,7 +2522,7 @@ function extractToolCallsFromText(text) {
     }
   }
 
-  // 2) Detect file write patterns
+  // 2) Detect file write patterns: `filename.ext` ```code```
   const fileBlockRegex = /(?:`([^`]+)`|\*\*([^*]+)\*\*)\s*```[a-z]*\s*\n([\s\S]*?)```/gi;
   while ((m = fileBlockRegex.exec(text)) !== null) {
     const fpath = (m[1] || m[2]).trim();
@@ -2488,7 +2532,17 @@ function extractToolCallsFromText(text) {
     }
   }
 
-  // Fallback 3: filename inside tick marks
+  // 3) Detect "filename.ext:\n```...```" pattern (model names a file then gives code)
+  const namedFileRe = /(?:^|\n)\s*([a-zA-Z0-9_\-./\\]+\.[a-zA-Z0-9]+)\s*:\s*\n\s*```[a-z]*\s*\n([\s\S]*?)```/gi;
+  while ((m = namedFileRe.exec(text)) !== null) {
+    const fpath = m[1].trim();
+    const content = m[2];
+    if (fpath && content && !calls.some(c => c.name === 'write_file' && c.input.path === fpath)) {
+      calls.push({ name: 'write_file', input: { path: fpath, content } });
+    }
+  }
+
+  // 4) Fallback: filename inside tick marks as code fence language
   const fileBlockRe = /```([a-zA-Z0-9_\-.\//\\]+\.[a-zA-Z0-9]+)\s*\n([\s\S]*?)```/gi;
   while ((m = fileBlockRe.exec(text)) !== null) {
     const fpath = m[1].trim();
