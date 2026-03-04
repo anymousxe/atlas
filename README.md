@@ -19,7 +19,10 @@ Atlas is an Electron-based AI coding workspace with an integrated editor, termin
 
 ## Download
 
-**[Download Atlas Installer](https://github.com/anymousxe/atlas/releases/latest)** — Get the latest `.exe` and `.zip` builds from releases.
+[![Download Portable ZIP](https://img.shields.io/badge/Download-ZIP_Portable-blue?style=for-the-badge&logo=windows)](https://github.com/anymousxe/atlas/raw/main/Atlas-Setup-1.3.0.zip)
+[![Download EXE Installer](https://img.shields.io/badge/Download-EXE_Installer-success?style=for-the-badge&logo=windows)](https://github.com/anymousxe/atlas/raw/main/Atlas-Setup-1.3.0.exe)
+
+*(Click to download the latest v1.3.0 builds directly)*
 
 ## Quick Start
 
