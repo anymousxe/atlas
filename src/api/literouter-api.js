@@ -232,10 +232,11 @@ function resolveModel(model, thinking) {
  * Single attempt to stream a completion. Tries Worker first, falls back to direct API.
  * @param {string} key - Direct API key (only used if Worker down)
  */
-async function* _streamAttempt(key, model, messages, signal, toolChoice = 'auto') {
+async function* _streamAttempt(key, model, messages, signal, toolChoice = 'auto', customPrompt = '') {
+  const systemPrompt = customPrompt ? LR_SYSTEM + '\n\n## USER CUSTOM INSTRUCTIONS\n' + customPrompt : LR_SYSTEM;
   const body = {
     model,
-    messages: [{ role: 'system', content: LR_SYSTEM }, ...messages],
+    messages: [{ role: 'system', content: systemPrompt }, ...messages],
     tools: LR_TOOLS,
     tool_choice: toolChoice,
     stream: true,
@@ -315,12 +316,12 @@ async function* _streamAttempt(key, model, messages, signal, toolChoice = 'auto'
 /**
  * Stream with retry. Tries to use Worker, falls back to direct API with key rotation.
  */
-async function* streamLR(keyMgr, model, messages, signal, toolChoice = 'auto') {
+async function* streamLR(keyMgr, model, messages, signal, toolChoice = 'auto', customPrompt = '') {
   const maxRetries = 2;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const key = keyMgr.next();
-      yield* _streamAttempt(key, model, messages, signal, toolChoice);
+      yield* _streamAttempt(key, model, messages, signal, toolChoice, customPrompt);
       return;
     } catch (err) {
       if (signal && signal.aborted) throw err;
@@ -344,7 +345,7 @@ async function processLR(keyMgr, model, messages, signal, onText, options = {}) 
   const toolMap = {};
   let finishReason = '';
 
-  for await (const chunk of streamLR(keyMgr, model, messages, signal, options.toolChoice || 'auto')) {
+  for await (const chunk of streamLR(keyMgr, model, messages, signal, options.toolChoice || 'auto', options.customPrompt || '')) {
     const c = chunk.choices && chunk.choices[0];
     if (!c) continue;
     const d = c.delta;

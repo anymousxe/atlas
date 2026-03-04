@@ -169,6 +169,11 @@
           <label class="settings-row"><span>Auto-approve commands</span>
             <select id="set-auto-approve" class="settings-input"><option value="off">Off</option><option value="on">On</option></select>
           </label>
+          <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:6px;">
+            <span>Custom System Prompt</span>
+            <textarea id="set-custom-prompt" class="settings-input" rows="4" placeholder="Add extra instructions for the AI (e.g. 'Always respond in Spanish', 'Use tabs instead of spaces')..." style="resize:vertical;min-height:60px;font-family:inherit;font-size:12px;line-height:1.4;"></textarea>
+            <span class="settings-desc" style="margin:0;">Appended to the AI's system instructions for every message.</span>
+          </div>
           <div class="settings-row"><span>Current Plan</span><span id="current-plan-display" style="font-weight:600;color:var(--accent);">Free</span></div>
           <div class="settings-desc" id="plan-desc">Free: basic limits. Upgrade on Patreon for higher limits.</div>
           <button id="btn-reload-keys" class="settings-btn" style="margin-top:6px;background:#569cd6;">🔑 Reload API Keys</button>

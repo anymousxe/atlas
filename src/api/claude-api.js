@@ -204,12 +204,13 @@ Every response MUST contain tool calls unless answering a pure knowledge questio
  * @param {AbortSignal} signal
  * @yields {{ type: string, ... }}
  */
-async function* streamClaude(apiKey, model, messages, signal, toolChoice) {
+async function* streamClaude(apiKey, model, messages, signal, toolChoice, customPrompt) {
   const trimmedKey = (apiKey || '').trim();
+  const systemPrompt = customPrompt ? SYSTEM_PROMPT + '\n\n## USER CUSTOM INSTRUCTIONS\n' + customPrompt : SYSTEM_PROMPT;
   const payload = {
     model,
     max_tokens: getClaudeMaxTokens(model),
-    system: SYSTEM_PROMPT,
+    system: systemPrompt,
     tools: CLAUDE_TOOLS,
     tool_choice: toolChoice || { type: 'auto' },
     messages,
@@ -289,7 +290,7 @@ async function processClaude(apiKey, model, messages, signal, onText, onThinking
   let currentTool = null;
   let stopReason = '';
 
-  for await (const evt of streamClaude(apiKey, model, messages, signal, options.toolChoice)) {
+  for await (const evt of streamClaude(apiKey, model, messages, signal, options.toolChoice, options.customPrompt)) {
     const t = evt.type;
 
     if (t === 'content_block_start') {

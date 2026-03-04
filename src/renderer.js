@@ -25,6 +25,7 @@ let claudeKey = '';
 let lrKeyMgr = null;
 let autoApprove = false;
 let currentMode = 'agent';     // 'agent' | 'fast' | 'plan'
+function getCustomPrompt() { return (localStorage.getItem('atlas-custom-prompt') || '').trim(); }
 let previewServerPort = null;
 let pendingImages = [];          // [{name, base64, mediaType}] for image uploads
 let chatThreads = [];            // [{id,title,messages,chatHistoryClaude,chatHistoryLR,snapshots,...}]
@@ -150,27 +151,16 @@ function updateUsageDisplay() {
   el.textContent = `${u.count}/${limitLabel}/min (${getCurrentPlan().toUpperCase()})`;
 }
 
-const LEGACY_THEME_CLASSES = ['theme-light','theme-midnight','theme-nord','theme-dracula','theme-solarized','theme-monokai','theme-github-dark','theme-catppuccin'];
-const NEW_THEMES = ['void','amber-hour','emerald','sakura','terminal'];
+const ALL_THEMES = ['void','amber-hour','emerald','sakura','terminal','light','midnight','nord','dracula','solarized','monokai','github-dark','catppuccin'];
 
 function applyTheme(theme) {
   const html = document.documentElement;
-  // Add transition class for smooth palette swap
   html.classList.add('theme-transitioning');
-  // Clear legacy class-based themes
-  document.body.classList.remove(...LEGACY_THEME_CLASSES);
-  // Clear data-theme attribute
+  // All themes now use data-theme attribute on <html>
   html.removeAttribute('data-theme');
-
-  if (NEW_THEMES.includes(theme)) {
-    // New themes use data-theme attribute (void is default / no attribute needed)
-    if (theme !== 'void') html.setAttribute('data-theme', theme);
-  } else if (theme && theme !== 'dark' && theme !== 'void') {
-    // Legacy themes use class on body
-    document.body.classList.add('theme-' + theme);
+  if (theme && theme !== 'void' && ALL_THEMES.includes(theme)) {
+    html.setAttribute('data-theme', theme);
   }
-
-  // Remove transition class after animation completes
   setTimeout(() => html.classList.remove('theme-transitioning'), 350);
 }
 
@@ -1679,7 +1669,8 @@ async function runPlanMode(userText, model) {
     chatHistoryClaude.push({ role: 'user', content: planPrompt });
     const result = await processClaude(claudeKey, model, chatHistoryClaude, abortCtrl.signal,
       (chunk) => { markAgentActivity(); planText += chunk; },
-      null
+      null,
+      { customPrompt: getCustomPrompt() }
     );
     chatHistoryClaude.push(buildClaudeAssistantMsg(result.text, result.toolCalls));
     planText = result.text;
@@ -1700,14 +1691,14 @@ async function runPlanMode(userText, model) {
       chatHistoryClaude.push(buildClaudeToolResults(result.toolCalls, toolResults));
       // Get the actual plan
       const planResult = await processClaude(claudeKey, model, chatHistoryClaude, abortCtrl.signal,
-        (chunk) => { markAgentActivity(); planText += chunk; }, null);
+        (chunk) => { markAgentActivity(); planText += chunk; }, null, { customPrompt: getCustomPrompt() });
       chatHistoryClaude.push(buildClaudeAssistantMsg(planResult.text, []));
       planText = planResult.text;
     }
   } else {
     chatHistoryLR.push({ role: 'user', content: planPrompt });
     const result = await processLR(lrKeyMgr, resolveModel(model, false), chatHistoryLR, abortCtrl.signal,
-      (chunk) => { markAgentActivity(); planText += chunk; });
+      (chunk) => { markAgentActivity(); planText += chunk; }, { customPrompt: getCustomPrompt() });
     chatHistoryLR.push(buildLRAssistantMsg(result.text, result.toolCalls));
     planText = result.text;
 
@@ -1725,7 +1716,7 @@ async function runPlanMode(userText, model) {
       }
       chatHistoryLR.push(...buildLRToolResults(result.toolCalls, toolResults));
       const planResult = await processLR(lrKeyMgr, resolveModel(model, false), chatHistoryLR, abortCtrl.signal,
-        (chunk) => { markAgentActivity(); planText += chunk; });
+        (chunk) => { markAgentActivity(); planText += chunk; }, { customPrompt: getCustomPrompt() });
       chatHistoryLR.push(buildLRAssistantMsg(planResult.text, []));
       planText = planResult.text;
     }
@@ -1869,7 +1860,7 @@ async function agentLoopClaude(userText, model, mode) {
 
     let result;
     try {
-      const claudeOptions = noToolRetries > 0 ? { toolChoice: { type: 'any' } } : {};
+      const claudeOptions = noToolRetries > 0 ? { toolChoice: { type: 'any' }, customPrompt: getCustomPrompt() } : { customPrompt: getCustomPrompt() };
       result = await processClaude(claudeKey, model, chatHistoryClaude, abortCtrl.signal,
         (chunk) => {
           if (thinkEl) { thinkEl.remove(); thinkEl = null; }
@@ -2034,7 +2025,7 @@ async function agentLoopLR(userText, model, mode) {
 
     let result;
     try {
-      const lrOptions = noToolRetries > 0 ? { toolChoice: 'required' } : {};
+      const lrOptions = noToolRetries > 0 ? { toolChoice: 'required', customPrompt: getCustomPrompt() } : { customPrompt: getCustomPrompt() };
       result = await processLR(lrKeyMgr, resolvedModel, chatHistoryLR, abortCtrl.signal,
         (chunk) => {
           if (thinkEl) { thinkEl.remove(); thinkEl = null; }
@@ -2774,6 +2765,9 @@ function restoreSettings() {
   const theme = localStorage.getItem(THEME_STORE_KEY) || 'void';
   applyTheme(theme);
   if ($('set-theme')) $('set-theme').value = theme;
+  // Restore custom system prompt
+  const customPrompt = localStorage.getItem('atlas-custom-prompt') || '';
+  if ($('set-custom-prompt')) $('set-custom-prompt').value = customPrompt;
 
   let plan = localStorage.getItem(PLAN_STORE_KEY) || 'free';
   if (plan === 'creator' && !isCreatorTester()) plan = 'dev';
@@ -2790,6 +2784,7 @@ function saveSettings() {
   localStorage.setItem('atlas-wordWrap', $('set-word-wrap')?.value || 'on');
   localStorage.setItem('atlas-minimap', $('set-minimap')?.value || 'off');
   localStorage.setItem('atlas-autoApprove', $('set-auto-approve')?.value || 'off');
+  localStorage.setItem('atlas-custom-prompt', $('set-custom-prompt')?.value || '');
   localStorage.setItem(THEME_STORE_KEY, $('set-theme')?.value || 'void');
   // Plan is managed via Patreon — preserve current plan
   const selectedPlan = (localStorage.getItem(PLAN_STORE_KEY) || 'free').toLowerCase();
