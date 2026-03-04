@@ -1,6 +1,6 @@
 {
   "name": "atlas",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "description": "Atlas — AI-Powered IDE",
   "main": "src/main.js",
   "scripts": {
