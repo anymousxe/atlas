@@ -3,8 +3,8 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const filePath = path.join(__dirname, 'dist', 'Atlas-Setup-1.3.0.exe');
-const fileName = 'Atlas-Setup-1.3.0.exe';
+const filePath = path.join(__dirname, 'dist', 'Atlas-Setup-1.3.1.exe');
+const fileName = 'Atlas-Setup-1.3.1.exe';
 
 // Step 1: Get server
 https.get('https://api.gofile.io/servers', (res) => {

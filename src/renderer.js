@@ -2888,7 +2888,8 @@ async function initGitHubBrowser() {
     }
   });
 
-  await refreshGithubAuthState();
+  // Don't auto-check GitHub auth on boot — only when user opens the panel
+  // await refreshGithubAuthState();
 }
 
 async function handleGitHubLogin() {
