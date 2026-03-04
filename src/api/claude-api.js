@@ -179,7 +179,7 @@ async function* streamClaude(apiKey, model, messages, signal) {
   const trimmedKey = (apiKey || '').trim();
   const payload = {
     model,
-    max_tokens: 32768,
+    max_tokens: 128000,
     system: SYSTEM_PROMPT,
     tools: CLAUDE_TOOLS,
     tool_choice: { type: 'auto' },

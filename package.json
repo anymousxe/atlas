@@ -1,0 +1,92 @@
+{
+  "name": "atlas",
+  "version": "1.2.7",
+  "description": "Atlas — AI-Powered IDE",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "npm run generate-icon && electron . --dev --clear-cache",
+    "dev": "npm run generate-icon && electron . --dev --clear-cache",
+    "generate-icon": "node scripts/generate-icon.js",
+    "build": "npm run generate-icon && electron-builder --win nsis zip",
+    "pack": "npm run generate-icon && electron-builder --dir",
+    "backend": "node scripts/server.js"
+  },
+  "author": "Atlas",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "body-parser": "^2.2.2",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "electron-updater": "^6.8.3",
+    "express": "^5.2.1",
+    "marked": "^15.0.4",
+    "morgan": "^1.10.1",
+    "sharp": "^0.33.5"
+  },
+  "build": {
+    "appId": "com.atlas.ide",
+    "productName": "Atlas",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/",
+        "to": "assets/",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "executableName": "Atlas",
+      "artifactName": "Atlas-Setup-${version}.${ext}",
+      "requestedExecutionLevel": "asInvoker",
+      "signAndEditExecutable": true,
+      "sign": null
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Atlas"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "anymousxe",
+      "repo": "atlas"
+    }
+  }
+}

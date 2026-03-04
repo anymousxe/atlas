@@ -1,0 +1,53 @@
+# Environment & Secrets (NEVER commit these)
+.env
+.env.local
+.env.*.local
+.env.production.local
+*.key
+*.pem
+.secrets
+
+# Worker-specific
+worker/.env
+worker/.env.local
+worker/.wrangler/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+yarn.lock
+
+# Build outputs
+dist/
+build/
+out/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+.env.vault
+
+# Electron
+electron-builder-cache/
+*.dmg
+*.exe
+*.zip
+dist_electron/
+
+# Testing
+.coverage
+.nyc_output
+
+# Logs
+*.log
+logs/
