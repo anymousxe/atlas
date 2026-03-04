@@ -150,10 +150,28 @@ function updateUsageDisplay() {
   el.textContent = `${u.count}/${limitLabel}/min (${getCurrentPlan().toUpperCase()})`;
 }
 
-const ALL_THEME_CLASSES = ['theme-light','theme-midnight','theme-nord','theme-dracula','theme-solarized','theme-monokai','theme-github-dark','theme-catppuccin'];
+const LEGACY_THEME_CLASSES = ['theme-light','theme-midnight','theme-nord','theme-dracula','theme-solarized','theme-monokai','theme-github-dark','theme-catppuccin'];
+const NEW_THEMES = ['void','amber-hour','emerald','sakura','terminal'];
+
 function applyTheme(theme) {
-  document.body.classList.remove(...ALL_THEME_CLASSES);
-  if (theme && theme !== 'dark') document.body.classList.add('theme-' + theme);
+  const html = document.documentElement;
+  // Add transition class for smooth palette swap
+  html.classList.add('theme-transitioning');
+  // Clear legacy class-based themes
+  document.body.classList.remove(...LEGACY_THEME_CLASSES);
+  // Clear data-theme attribute
+  html.removeAttribute('data-theme');
+
+  if (NEW_THEMES.includes(theme)) {
+    // New themes use data-theme attribute (void is default / no attribute needed)
+    if (theme !== 'void') html.setAttribute('data-theme', theme);
+  } else if (theme && theme !== 'dark' && theme !== 'void') {
+    // Legacy themes use class on body
+    document.body.classList.add('theme-' + theme);
+  }
+
+  // Remove transition class after animation completes
+  setTimeout(() => html.classList.remove('theme-transitioning'), 350);
 }
 
 function updateModelWarning() {
@@ -169,7 +187,7 @@ function updatePlanDescription() {
   if (plan === 'creator') el.textContent = 'Creator: unlimited usage for internal testing.';
   else if (plan === 'dev') el.textContent = 'DEV ($20): much higher message limits and heavy usage headroom.';
   else if (plan === 'pro') el.textContent = 'Pro ($10): reasonable, slightly generous usage for daily work.';
-  else el.textContent = 'Free: basic limits. Upgrade via Ko-fi for higher limits.';
+  else el.textContent = 'Free: basic limits. Upgrade on Patreon for higher limits.';
 }
 
 // ─── Git Panel ──────────────────────────────────────────────────
@@ -1820,13 +1838,6 @@ function shouldForceToolRetry(text) {
   return intentPatterns.some((re) => re.test(t));
 }
 
-ng)\s+(the\s+)?(file|folder|director|all)/,
-    /here.*(?:commands?|steps?).*(?:delete|remove)/,
-    /to\s+delete|to\s+remove|will\s+(?:now\s+)?(?:delete|remove)/
-  ];
-  return intentPatterns.some((re) => re.test(t));
-}
-
 /* ================================================================
    CLAUDE AGENT LOOP
    ================================================================ */
@@ -2706,13 +2717,14 @@ function restoreSettings() {
     if (chatCb) chatCb.checked = true;
   }
   currentMode = localStorage.getItem('atlas-mode') || 'agent';
-  const theme = localStorage.getItem(THEME_STORE_KEY) || 'dark';
+  const theme = localStorage.getItem(THEME_STORE_KEY) || 'void';
   applyTheme(theme);
   if ($('set-theme')) $('set-theme').value = theme;
 
   let plan = localStorage.getItem(PLAN_STORE_KEY) || 'free';
   if (plan === 'creator' && !isCreatorTester()) plan = 'dev';
-  if ($('set-plan')) $('set-plan').value = plan;
+  const planDisplay = $('current-plan-display');
+  if (planDisplay) planDisplay.textContent = plan.charAt(0).toUpperCase() + plan.slice(1);
   localStorage.setItem(PLAN_STORE_KEY, plan);
   updatePlanDescription();
 
@@ -2724,11 +2736,12 @@ function saveSettings() {
   localStorage.setItem('atlas-wordWrap', $('set-word-wrap')?.value || 'on');
   localStorage.setItem('atlas-minimap', $('set-minimap')?.value || 'off');
   localStorage.setItem('atlas-autoApprove', $('set-auto-approve')?.value || 'off');
-  localStorage.setItem(THEME_STORE_KEY, $('set-theme')?.value || 'dark');
-  const selectedPlan = ($('set-plan')?.value || 'free').toLowerCase();
+  localStorage.setItem(THEME_STORE_KEY, $('set-theme')?.value || 'void');
+  // Plan is managed via Patreon — preserve current plan
+  const selectedPlan = (localStorage.getItem(PLAN_STORE_KEY) || 'free').toLowerCase();
   localStorage.setItem(PLAN_STORE_KEY, selectedPlan === 'creator' && !isCreatorTester() ? 'dev' : selectedPlan);
   autoApprove = $('set-auto-approve')?.value === 'on';
-  applyTheme(localStorage.getItem(THEME_STORE_KEY) || 'dark');
+  applyTheme(localStorage.getItem(THEME_STORE_KEY) || 'void');
   updatePlanDescription();
 
   // Apply
@@ -3266,7 +3279,7 @@ function displayRepos(repos) {
   });
 
   $('set-theme')?.addEventListener('change', saveSettings);
-  $('set-plan')?.addEventListener('change', saveSettings);
+  // Plan is managed via Patreon — no local select
 
   // Reload keys manually
   $('btn-reload-keys')?.addEventListener('click', async () => {
@@ -3279,34 +3292,9 @@ function displayRepos(repos) {
     }
   });
 
-  // Ko-fi upgrade + verify
-  $('btn-kofi-upgrade')?.addEventListener('click', () => {
-    window.atlas.openExternal('https://ko-fi.com/anymousxe/tiers');
-  });
-  $('btn-kofi-verify')?.addEventListener('click', async () => {
-    const email = $('kofi-verify-email')?.value?.trim();
-    if (!email) { $('kofi-verify-status').textContent = 'Enter your Ko-fi email.'; return; }
-    $('kofi-verify-status').textContent = 'Verifying...';
-    try {
-      const result = await window.atlas.verifyKofi(email);
-      if (result?.verified) {
-        const tier = result.tier || 'pro';
-        localStorage.setItem(VERIFIED_EMAIL_STORE_KEY, normalizeEmail(result.email || email));
-        localStorage.setItem(PLAN_STORE_KEY, tier);
-        if ($('set-plan')) $('set-plan').value = tier;
-        updatePlanDescription();
-        updateUsageDisplay();
-        $('kofi-verify-status').textContent = `✓ Verified! Plan set to ${tier.toUpperCase()}.`;
-        $('kofi-verify-status').style.color = 'var(--green)';
-        notify(`Plan upgraded to ${tier.toUpperCase()}!`, 'success');
-      } else {
-        $('kofi-verify-status').textContent = result?.reason || 'Verification failed. Purchase not found for this email.';
-        $('kofi-verify-status').style.color = 'var(--red)';
-      }
-    } catch (e) {
-      $('kofi-verify-status').textContent = 'Verification error: ' + e.message;
-      $('kofi-verify-status').style.color = 'var(--red)';
-    }
+  // Patreon upgrade
+  $('btn-patreon-upgrade')?.addEventListener('click', () => {
+    window.atlas.openExternal('https://www.patreon.com/15655004/join');
   });
 
   // Preview

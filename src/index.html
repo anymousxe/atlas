@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="void">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -137,7 +137,25 @@
           <h3>Editor</h3>
           <label class="settings-row"><span>Font Size</span><input type="number" id="set-font-size" value="13.5" min="8" max="32" step="0.5" class="settings-input"/></label>
           <label class="settings-row"><span>Theme</span>
-            <select id="set-theme" class="settings-input"><option value="dark">Dark</option><option value="midnight">Midnight</option><option value="light">Light</option><option value="nord">Nord</option><option value="dracula">Dracula</option><option value="solarized">Solarized</option><option value="monokai">Monokai</option><option value="github-dark">GitHub Dark</option><option value="catppuccin">Catppuccin</option></select>
+            <select id="set-theme" class="settings-input">
+              <optgroup label="Featured">
+                <option value="void" selected>Void</option>
+                <option value="amber-hour">Amber Hour</option>
+                <option value="emerald">Emerald</option>
+                <option value="sakura">Sakura</option>
+                <option value="terminal">Terminal</option>
+              </optgroup>
+              <optgroup label="Classic">
+                <option value="light">Light</option>
+                <option value="midnight">Midnight</option>
+                <option value="nord">Nord</option>
+                <option value="dracula">Dracula</option>
+                <option value="solarized">Solarized</option>
+                <option value="monokai">Monokai</option>
+                <option value="github-dark">GitHub Dark</option>
+                <option value="catppuccin">Catppuccin</option>
+              </optgroup>
+            </select>
           </label>
           <label class="settings-row"><span>Word Wrap</span>
             <select id="set-word-wrap" class="settings-input"><option value="on">On</option><option value="off">Off</option></select>
@@ -151,20 +169,10 @@
           <label class="settings-row"><span>Auto-approve commands</span>
             <select id="set-auto-approve" class="settings-input"><option value="off">Off</option><option value="on">On</option></select>
           </label>
-          <label class="settings-row"><span>Current Plan</span>
-            <select id="set-plan" class="settings-input"><option value="free">Free</option><option value="pro">Pro ($10)</option><option value="dev">DEV ($20)</option><option value="creator">Creator (Test)</option></select>
-          </label>
-          <div class="settings-desc" id="plan-desc">Free: basic limits. Upgrade via Ko-fi for higher limits.</div>
+          <div class="settings-row"><span>Current Plan</span><span id="current-plan-display" style="font-weight:600;color:var(--accent);">Free</span></div>
+          <div class="settings-desc" id="plan-desc">Free: basic limits. Upgrade on Patreon for higher limits.</div>
           <button id="btn-reload-keys" class="settings-btn" style="margin-top:6px;background:#569cd6;">🔑 Reload API Keys</button>
-          <button id="btn-kofi-upgrade" class="settings-btn" style="margin-top:6px;background:#ff5e5b;">☕ Upgrade on Ko-fi</button>
-          <div id="kofi-verify-wrap" style="margin-top:8px;">
-            <div style="font-size:11px;color:var(--fg3);margin-bottom:4px;">Already purchased? Enter your Ko-fi email to verify:</div>
-            <div style="display:flex;gap:4px;">
-              <input type="email" id="kofi-verify-email" placeholder="your@email.com" class="settings-input" style="flex:1;width:auto;"/>
-              <button id="btn-kofi-verify" class="settings-btn" style="padding:3px 10px;">Verify</button>
-            </div>
-            <div id="kofi-verify-status" class="settings-status"></div>
-          </div>
+          <button id="btn-patreon-upgrade" class="settings-btn" style="margin-top:6px;background:var(--accent);">✦ Upgrade on Patreon</button>
         </div>
         <div class="settings-section">
           <h3>About Atlas</h3>
