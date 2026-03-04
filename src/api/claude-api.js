@@ -4,8 +4,22 @@ console.log('[Atlas] claude-api.js loaded OK');
 
 // Primary: Cloudflare Worker (secure, keys stay in worker)
 // Fallback: Direct API (for offline/dev - keys come from env via renderer)
-const CLAUDE_WORKER_BASE = 'http://localhost:8787';
+const CLAUDE_WORKER_BASE = 'https://atlas-api-proxy.anymousxe-info.workers.dev';
 const CLAUDE_DIRECT_BASE = 'https://claude-gateway.rur.workers.dev';
+
+// Max output tokens per Claude model
+const CLAUDE_MAX_TOKENS = {
+  'claude-opus-4-6': 32000,
+  'claude-sonnet-4-6': 64000,
+  'claude-haiku-4-5': 8192
+};
+function getClaudeMaxTokens(model) {
+  if (CLAUDE_MAX_TOKENS[model]) return CLAUDE_MAX_TOKENS[model];
+  if (model.includes('opus')) return 32000;
+  if (model.includes('sonnet')) return 64000;
+  if (model.includes('haiku')) return 8192;
+  return 16384;
+}
 
 const CLAUDE_TOOLS = [
   {
@@ -179,7 +193,7 @@ async function* streamClaude(apiKey, model, messages, signal) {
   const trimmedKey = (apiKey || '').trim();
   const payload = {
     model,
-    max_tokens: 128000,
+    max_tokens: getClaudeMaxTokens(model),
     system: SYSTEM_PROMPT,
     tools: CLAUDE_TOOLS,
     tool_choice: { type: 'auto' },
@@ -202,7 +216,7 @@ async function* streamClaude(apiKey, model, messages, signal) {
         }),
         signal
       }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
     ]);
     if (!res.ok) throw new Error(`Worker ${res.status}`);
   } catch (workerErr) {

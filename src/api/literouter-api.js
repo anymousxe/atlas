@@ -4,7 +4,7 @@ console.log('[Atlas] literouter-api.js loaded OK');
 
 // Primary: Cloudflare Worker (secure, keys stay in worker)
 // Fallback: Direct API (for offline/dev - keys come from env via renderer)
-const LR_WORKER_BASE = 'http://localhost:8787';
+const LR_WORKER_BASE = 'https://atlas-api-proxy.anymousxe-info.workers.dev';
 const LR_DIRECT_BASE = 'https://api.literouter.com/v1';
 
 const LR_TOOLS = [
@@ -208,7 +208,7 @@ async function* _streamAttempt(key, model, messages, signal) {
     tools: LR_TOOLS,
     tool_choice: 'auto',
     stream: true,
-    max_tokens: 128000
+    max_tokens: 64000
   };
 
   // Try Worker first (secure path)
@@ -226,7 +226,7 @@ async function* _streamAttempt(key, model, messages, signal) {
         }),
         signal
       }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
     ]);
     if (!res.ok) throw new Error(`Worker ${res.status}`);
   } catch (workerErr) {
