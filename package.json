@@ -8,6 +8,7 @@
     "dev": "npm run generate-icon && electron . --dev --clear-cache",
     "generate-icon": "node scripts/generate-icon.js",
     "build": "npm run generate-icon && electron-builder --win nsis zip",
+    "publish": "npm run generate-icon && electron-builder --win nsis --publish always",
     "pack": "npm run generate-icon && electron-builder --dir",
     "backend": "node scripts/server.js"
   },
