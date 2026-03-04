@@ -1,19 +1,45 @@
 /**
- * Cloudflare Worker: Atlas API Proxy
+ * Cloudflare Worker: Atlas API Proxy + Update Feed
  * 
- * This worker securely proxies API calls from your frontend to external APIs.
- * API keys are stored in Cloudflare's secure vault and NEVER exposed to the browser.
+ * POST /          — securely proxies API calls (Claude, LiteRouter)
+ * GET  /update/*  — serves electron-updater feed (latest.yml, version info)
  * 
- * CORS is enabled to allow requests from your Electron app frontend.
+ * API keys + update metadata stored in Cloudflare secrets, NEVER exposed.
  */
 
 export default {
   async fetch(request, env, ctx) {
-    // Only allow POST and OPTIONS requests
+    const url = new URL(request.url);
+
+    // CORS preflight
     if (request.method === 'OPTIONS') {
       return handleCORS();
     }
 
+    // ── Update Feed (GET) ──────────────────────────────────────
+    if (request.method === 'GET') {
+      const path = url.pathname.replace(/\/+$/, '');
+
+      if (path === '/update/latest.yml' || path === '/update/latest') {
+        return handleLatestYml(env);
+      }
+      if (path === '/update/version') {
+        return jsonResponse({ version: env.ATLAS_VERSION || '0.0.0' });
+      }
+      if (path === '/update/info') {
+        return jsonResponse({
+          version: env.ATLAS_VERSION || '0.0.0',
+          exe: env.ATLAS_EXE_URL || null,
+          zip: env.ATLAS_ZIP_URL || null,
+        });
+      }
+      if (path === '/health' || path === '/') {
+        return jsonResponse({ status: 'ok', service: 'atlas-api-proxy' });
+      }
+      return errorResponse('Not found', 404);
+    }
+
+    // ── API Proxy (POST) ───────────────────────────────────────
     if (request.method !== 'POST') {
       return errorResponse('Method not allowed. Use POST.', 405);
     }
@@ -155,12 +181,52 @@ async function handleLiteRouterAPI(endpoint, payload, customHeaders = {}, env) {
 }
 
 /**
+ * Helper: Generate latest.yml for electron-updater generic provider
+ * electron-updater expects YAML with: version, files[], path, sha512, releaseDate
+ */
+function handleLatestYml(env) {
+  const version = (env.ATLAS_VERSION || '0.0.0').trim();
+  const exeUrl = (env.ATLAS_EXE_URL || '').trim();
+  const zipUrl = (env.ATLAS_ZIP_URL || '').trim();
+  const sha512 = (env.ATLAS_EXE_SHA512 || '').trim();
+  const size = (env.ATLAS_EXE_SIZE || '0').trim();
+  const releaseDate = (env.ATLAS_RELEASE_DATE || new Date().toISOString()).trim();
+
+  if (!version || version === '0.0.0') {
+    return errorResponse('Update feed not configured yet (ATLAS_VERSION not set)', 404);
+  }
+
+  const exeFilename = `Atlas-Setup-${version}.exe`;
+
+  // electron-updater latest.yml format
+  const yml = [
+    `version: ${version}`,
+    `files:`,
+    `  - url: ${exeUrl || exeFilename}`,
+    `    sha512: ${sha512 || ''}`,
+    `    size: ${size}`,
+    `path: ${exeUrl || exeFilename}`,
+    `sha512: ${sha512 || ''}`,
+    `releaseDate: '${releaseDate}'`,
+  ].join('\n');
+
+  return new Response(yml, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/x-yaml',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      ...getCORSHeaders(),
+    },
+  });
+}
+
+/**
  * Helper: Get CORS headers to allow requests from your frontend
  */
 function getCORSHeaders() {
   return {
-    'Access-Control-Allow-Origin': '*', // In production, restrict to your domain
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Max-Age': '86400',
   };

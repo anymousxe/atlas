@@ -4,7 +4,7 @@
   "description": "Atlas — AI-Powered IDE",
   "main": "src/main.js",
   "scripts": {
-    "start": "npm run generate-icon && electron . --dev --clear-cache",
+    "start": "npm run generate-icon && electron .",
     "dev": "npm run generate-icon && electron . --dev --clear-cache",
     "generate-icon": "node scripts/generate-icon.js",
     "build": "npm run generate-icon && electron-builder --win nsis zip",

@@ -21,6 +21,8 @@ const GITHUB_OAUTH_PROTOCOL = 'atlas-app';
 const GITHUB_OAUTH_REDIRECT_URI = 'http://127.0.0.1:3000/callback';
 const GITHUB_TOKEN_STORAGE_FILE = () => path.join(app.getPath('userData'), 'github-token.json');
 let updatePollTimer = null;
+let updateStartupTimer = null;
+let updateCheckInFlight = false;
 let githubAccessToken = '';
 let githubOAuthError = '';
 let githubAuthPending = false;
@@ -86,9 +88,105 @@ function getUpdateFeedUrlFromEnv() {
     envConfig.GENERIC_UPDATE_FEED_URL ||
     ''
   ).trim();
-  if (!raw) return '';
+  if (!raw) {
+    const installerUrl = String(envConfig.UPDATE_INSTALLER_URL || '').trim();
+    if (installerUrl && /^https?:\/\//i.test(installerUrl)) {
+      try {
+        const parsed = new URL(installerUrl);
+        const parts = parsed.pathname.split('/').filter(Boolean);
+        if (parts.length > 1) {
+          parts.pop();
+          parsed.pathname = `/${parts.join('/')}/`;
+          parsed.search = '';
+          parsed.hash = '';
+          return parsed.toString();
+        }
+      } catch {
+        return '';
+      }
+    }
+    return '';
+  }
   if (!/^https?:\/\//i.test(raw)) return '';
   return raw.replace(/\/+$/, '/');
+}
+
+function parseEnvBool(v, fallback = false) {
+  if (v == null || v === '') return fallback;
+  return /^(1|true|yes|on)$/i.test(String(v).trim());
+}
+
+function parseEnvInt(v, fallback) {
+  const n = Number.parseInt(String(v || '').trim(), 10);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return n;
+}
+
+function getBackgroundUpdateOptions() {
+  const enabled = parseEnvBool(envConfig.AUTO_UPDATE_BACKGROUND, true);
+  const silentErrors = parseEnvBool(envConfig.AUTO_UPDATE_SILENT_ERRORS, true);
+  const intervalMinutes = parseEnvInt(envConfig.AUTO_UPDATE_INTERVAL_MINUTES, 10);
+  const startupDelaySeconds = parseEnvInt(envConfig.AUTO_UPDATE_STARTUP_DELAY_SECONDS, 30);
+  const installOnDownload = parseEnvBool(envConfig.AUTO_UPDATE_INSTALL_ON_DOWNLOAD, false);
+  return {
+    enabled,
+    silentErrors,
+    intervalMs: Math.max(60 * 1000, intervalMinutes * 60 * 1000),
+    startupDelayMs: Math.max(10 * 1000, startupDelaySeconds * 1000),
+    installOnDownload
+  };
+}
+
+async function runUpdateCheck({ source = 'manual', silentErrors = false } = {}) {
+  if (!isUpdaterAvailable()) {
+    return { ok: false, skipped: true, reason: updaterUnavailableReason() };
+  }
+  if (updateCheckInFlight) {
+    return { ok: false, skipped: true, reason: 'Update check already in progress.' };
+  }
+
+  updateCheckInFlight = true;
+  try {
+    await autoUpdater.checkForUpdates();
+    return { ok: true };
+  } catch (err) {
+    const payload = formatUpdateError(err);
+    console.error(`[Atlas] ${source} update check failed:`, payload.message, '| detail:', payload.detail);
+    if (!silentErrors) {
+      notifyRenderer('update:error', payload);
+    }
+    return { ok: false, error: payload };
+  } finally {
+    updateCheckInFlight = false;
+  }
+}
+
+function startBackgroundUpdateChecks() {
+  if (!isUpdaterAvailable()) return;
+  const opts = getBackgroundUpdateOptions();
+  if (!opts.enabled) {
+    console.log('[Atlas] Background updates disabled via AUTO_UPDATE_BACKGROUND');
+    return;
+  }
+
+  if (updateStartupTimer) {
+    clearTimeout(updateStartupTimer);
+    updateStartupTimer = null;
+  }
+  if (updatePollTimer) {
+    clearInterval(updatePollTimer);
+    updatePollTimer = null;
+  }
+
+  updateStartupTimer = setTimeout(() => {
+    runUpdateCheck({ source: 'startup-background', silentErrors: opts.silentErrors });
+  }, opts.startupDelayMs);
+
+  updatePollTimer = setInterval(() => {
+    runUpdateCheck({ source: 'interval-background', silentErrors: opts.silentErrors });
+  }, opts.intervalMs);
+
+  console.log(`[Atlas] Background updater active (interval ${Math.round(opts.intervalMs / 60000)}m, startup delay ${Math.round(opts.startupDelayMs / 1000)}s)`);
 }
 
 function hasPlaceholderGithubUpdaterConfig() {
@@ -236,7 +334,8 @@ autoUpdater.on('download-progress', (progress) => {
 
 autoUpdater.on('update-downloaded', () => {
   notifyRenderer('update:downloaded');
-  if (installUpdateImmediately) {
+  const opts = getBackgroundUpdateOptions();
+  if (installUpdateImmediately || opts.installOnDownload) {
     setTimeout(() => {
       autoUpdater.quitAndInstall(false, true);
     }, 1200);
@@ -251,15 +350,7 @@ autoUpdater.on('error', (err) => {
 
 ipcMain.handle('update:check', () => {
   installUpdateImmediately = false;
-  if (!isUpdaterAvailable()) {
-    return { ok: false, skipped: true, reason: updaterUnavailableReason() };
-  }
-  autoUpdater.checkForUpdates().catch(err => {
-    const payload = formatUpdateError(err);
-    console.error('Update check failed:', payload.message, '| detail:', payload.detail);
-    notifyRenderer('update:error', payload);
-  });
-  return { ok: true };
+  return runUpdateCheck({ source: 'ipc-check', silentErrors: false });
 });
 
 ipcMain.handle('update:download', () => {
@@ -276,15 +367,7 @@ ipcMain.handle('update:download', () => {
 
 ipcMain.handle('update:run', () => {
   installUpdateImmediately = true;
-  if (!isUpdaterAvailable()) {
-    return { ok: false, skipped: true, reason: updaterUnavailableReason() };
-  }
-  autoUpdater.checkForUpdates().catch(err => {
-    const payload = formatUpdateError(err);
-    console.error('Update flow failed:', payload.message, '| detail:', payload.detail);
-    notifyRenderer('update:error', payload);
-  });
-  return { ok: true };
+  return runUpdateCheck({ source: 'ipc-run', silentErrors: false });
 });
 
 ipcMain.handle('update:install', () => {
@@ -990,21 +1073,7 @@ async function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
   mainWindow.once('ready-to-show', () => {
-    if (!isUpdaterAvailable()) return;
-    autoUpdater.checkForUpdates().catch(err => {
-      const payload = formatUpdateError(err);
-      console.error('Startup update check failed:', payload.message, '| detail:', payload.detail);
-      notifyRenderer('update:error', payload);
-    });
-
-    if (updatePollTimer) clearInterval(updatePollTimer);
-    updatePollTimer = setInterval(() => {
-      autoUpdater.checkForUpdates().catch(err => {
-        const payload = formatUpdateError(err);
-        console.error('Periodic update check failed:', payload.message, '| detail:', payload.detail);
-        notifyRenderer('update:error', payload);
-      });
-    }, 5 * 60 * 1000);
+    startBackgroundUpdateChecks();
   });
   // Open devtools in dev mode
   if (process.argv.includes('--dev')) mainWindow.webContents.openDevTools();
@@ -1055,6 +1124,10 @@ if (!gotSingleInstanceLock) {
 }
 app.on('window-all-closed', () => {
   stopGithubCallbackServer();
+  if (updateStartupTimer) {
+    clearTimeout(updateStartupTimer);
+    updateStartupTimer = null;
+  }
   if (updatePollTimer) {
     clearInterval(updatePollTimer);
     updatePollTimer = null;

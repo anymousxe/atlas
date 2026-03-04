@@ -94,6 +94,10 @@
   --shadow-lg:0 8px 40px rgba(0,0,0,0.5);
   --shadow-glow:0 0 20px var(--glow);
   --shadow-card:0 4px 16px rgba(0,0,0,0.5);
+
+  /* legacy inline-token aliases (used by some inline styles in HTML) */
+  --accent:var(--color-accent);
+  --red:var(--color-error);
 }
 
 /* ============== THEME: AMBER HOUR ============== */
@@ -1315,4 +1319,130 @@ html.theme-transitioning *{
              color 0.15s var(--ease),
              border-color 0.3s var(--ease),
              box-shadow 0.3s var(--ease) !important;
+}
+
+/* ============== REFINEMENT PASS: VS CODE-LIKE UI ============== */
+:root{
+  --color-bg-primary:#1e1e1e;
+  --color-bg-secondary:#252526;
+  --color-bg-tertiary:#2d2d30;
+  --color-bg-elevated:#313135;
+
+  --color-text-primary:#cccccc;
+  --color-text-secondary:#b6b6b6;
+  --color-text-tertiary:#8b8b8b;
+  --color-text-disabled:#6f6f6f;
+
+  --color-border:#3c3c3c;
+  --color-border-subtle:rgba(255,255,255,0.06);
+  --color-border-accent:rgba(0,120,212,0.35);
+
+  --color-accent:#0078d4;
+  --color-accent-hover:#1890f1;
+  --color-accent-muted:rgba(0,120,212,0.16);
+  --color-accent-subtle:rgba(0,120,212,0.08);
+  --color-accent2:#3794ff;
+  --color-accent3:#2aaaff;
+
+  --glow:rgba(0,120,212,0.2);
+  --glow-strong:rgba(0,120,212,0.35);
+
+  --radius:4px;
+  --radius-sm:4px;
+  --radius-xs:3px;
+  --radius-lg:6px;
+
+  --shadow-sm:0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md:0 4px 14px rgba(0,0,0,0.32);
+  --shadow-lg:0 10px 28px rgba(0,0,0,0.4);
+  --shadow-card:0 4px 14px rgba(0,0,0,0.35);
+
+  --font-ui:'Segoe UI',Inter,system-ui,sans-serif;
+  --font-mono:'Cascadia Code','Fira Code','JetBrains Mono',Consolas,monospace;
+
+  --accent:var(--color-accent);
+  --red:var(--color-error);
+}
+
+body{
+  background:var(--color-bg-primary);
+  color:var(--color-text-primary);
+}
+
+/* Menubar */
+#menubar{background:var(--color-bg-secondary);border-bottom:1px solid var(--color-border)}
+.logo-svg{color:var(--color-text-tertiary);filter:none}
+.mb-title{
+  background:none;
+  -webkit-text-fill-color:var(--color-text-primary);
+  color:var(--color-text-primary);
+  letter-spacing:.2px;
+  font-weight:600;
+}
+.mb-menu{padding:4px 9px;border-radius:3px}
+.mb-menu:hover{background:#2a2d2e}
+.mb-dropdown{background:#252526;border:1px solid #3c3c3c;border-radius:4px;backdrop-filter:none}
+.mb-item:hover{background:#094771;color:#fff}
+
+/* Activity + side bars */
+#activity-bar{background:#333333;border-right:1px solid #2a2a2a}
+.ab-btn{width:40px;height:40px;border-radius:3px}
+.ab-btn.active{background:transparent;box-shadow:inset 2px 0 0 var(--color-accent);color:#fff}
+
+#sidebar,#preview-panel,#chat-panel{background:var(--color-bg-secondary);border-color:var(--color-border)}
+.sb-head,.preview-head,.chat-head,.term-head{border-color:var(--color-border)}
+
+/* Tabs/editor */
+#editor-tabs{background:#2d2d2d;border-bottom:1px solid var(--color-border);height:35px}
+.ed-tab{margin-top:0;border-radius:0;padding:0 12px;color:#969696}
+.ed-tab:hover{background:#2a2d2e;color:#cfcfcf}
+.ed-tab.active{background:#1e1e1e;color:#fff;box-shadow:inset 0 1px 0 var(--color-accent)}
+
+/* Inputs/buttons */
+input,textarea,select{background:#3c3c3c;border:1px solid #3c3c3c;border-radius:3px}
+input:hover,textarea:hover,select:hover{border-color:#4b4b4b}
+input:focus,textarea:focus,select:focus{border-color:var(--color-accent);box-shadow:0 0 0 1px var(--color-accent)}
+
+.settings-btn,.send-btn,.sb-action-btn,.btn-approve{
+  border-radius:3px;
+  box-shadow:none;
+  transition:background-color var(--transition-fast),transform var(--transition-fast),filter var(--transition-fast);
+}
+.settings-btn:hover,.send-btn:hover,.sb-action-btn:hover,.btn-approve:hover{transform:translateY(-1px);filter:brightness(1.05)}
+
+/* Chat look: cleaner + native */
+.chat-label{background:none;-webkit-text-fill-color:var(--color-text-primary);color:var(--color-text-primary);filter:none;letter-spacing:1px}
+#chat-log{padding:14px;gap:10px}
+.msg{border-radius:6px;padding:12px 14px;line-height:1.55}
+.msg.user{background:#09477133;border:1px solid #0e639c55;color:#dbeeff;max-width:88%}
+.msg.assistant{padding:10px 2px;background:transparent}
+.msg.tool{background:#1f1f1f;border:1px solid #3c3c3c}
+
+/* Status bar closer to VS Code */
+#statusbar{
+  background:#007acc;
+  color:#ffffff;
+  border-top:1px solid #0069b9;
+}
+
+/* Subtle, smooth motion pass */
+#sidebar,#preview-panel,#chat-panel,#terminal-area,.modal-box,.ctx-menu,.theme-menu,.live-file-card{
+  animation:fadeIn 220ms var(--ease);
+}
+.tree-item,.sb-btn,.term-btn,.mb-item,.ed-tab,.mode-btn,.msg,.gh-repo-item,.ctx-menu-item{
+  transition:background-color var(--transition-fast),color var(--transition-fast),transform var(--transition-fast),border-color var(--transition-fast),box-shadow var(--transition-fast);
+}
+.tree-item:hover,.gh-repo-item:hover{transform:translateX(1px)}
+.msg:hover .msg-action-btn{opacity:.92}
+
+/* Modal polish without flashy glow */
+.modal-overlay{backdrop-filter:blur(4px)}
+.modal-box{
+  border:1px solid #454545;
+  box-shadow:0 10px 28px rgba(0,0,0,0.45);
+}
+
+/* Keep reduced motion strict */
+@media (prefers-reduced-motion:reduce){
+  #sidebar,#preview-panel,#chat-panel,#terminal-area,.modal-box,.ctx-menu,.theme-menu,.live-file-card{animation:none!important}
 }
